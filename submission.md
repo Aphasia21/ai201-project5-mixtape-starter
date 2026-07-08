@@ -1,9 +1,70 @@
-# Mixtape — Codebase Map
+# Mixtape — Bug Hunt Submission
 
 Mixtape is a Flask + SQLAlchemy JSON API for a social music app: friends share
 songs, build collaborative playlists, rate tracks, and track listening streaks
-and feeds. This document maps the code, traces two real data flows end to end,
-and calls out the architectural patterns the app follows.
+and feeds. This document contains my AI-usage disclosure, a codebase map, two
+end-to-end data-flow traces, the architectural patterns I noticed, and a
+root-cause-analysis entry for each bug I investigated.
+
+**Bugs fixed:** Issue #1 (streak), Issue #4 (rating notification), Issue #5
+(playlist) — one commit each on `bugfix/mixtape`. Issues #2 and #3 were
+reproduced/investigated but not fixed (see the RCA section for why #3 could not
+be reproduced on this stack).
+
+---
+
+## AI Usage
+
+I used an AI coding assistant (Claude Code) throughout this project. It was most
+useful for **navigation and debugging**, not just writing code — the actual code
+changes here are tiny (one clause, one slice, one function call). Being specific
+about the collaboration:
+
+**Codebase navigation — what I asked it to explain/trace.** I asked it to map the
+`services/` directory and to trace specific call chains, e.g. "how does a song get
+into a friend's feed" and "how does rating a song flow from the route down." It
+produced the route → service traces (e.g. `POST /songs/<id>/listen` →
+`routes/songs.py` → `record_listening_event` → `update_listening_streak`) that
+became my navigation path for each bug. I did not take these on faith — I opened
+each file it named and confirmed the call actually existed and did what it claimed
+before treating the trace as correct.
+
+**Debugging technique it helped most with.** The single most useful thing was
+having it write small **reproduction harnesses that call the service functions
+directly with controlled inputs**, rather than firing HTTP requests. For Issue #1
+this was essential: the real "today" is a Tuesday, so I could never hit the Sunday
+bug through the running app — but `update_listening_streak(user, now)` takes the
+clock as a parameter, so we drove it with a synthetic Sunday and watched the streak
+collapse from 12 to 1. That "isolate the function and call it with specific inputs"
+approach (rather than reading and guessing) is what confirmed each root cause before
+I changed anything.
+
+**Where the AI was wrong / incomplete — and how I caught it.** Its first analysis
+of Issue #3 (duplicate search results) was confidently wrong. It read the
+`.outerjoin(song_tags)` in `search_service.py` and asserted the endpoint would
+return a multi-tag song three times, so it was "obviously reproducible." When I
+actually **ran** its own repro harness, `search_songs("Anthem")` returned the song
+**once**, not three times. Rather than trust either the report or the AI, I had it
+run the identical query three ways and compare: the raw SQL join really does return
+3 rows, but the app's legacy `db.session.query(Song).all()` API auto-de-duplicates
+ORM entities by primary key, so the duplication is masked on this SQLAlchemy
+version (2.0.51). That empirical check — not the AI's initial explanation — is why
+I did *not* count #3 among my fixes and chose #4 instead. Lesson reinforced: verify
+by running, because a plausible read of the code was simply incorrect about runtime
+behavior.
+
+**A bug the AI surfaced by running, not reading.** While building the Issue #4
+reproduction, executing the code (not inspecting it) surfaced an unrelated crash:
+`add_to_playlist()` throws `IntegrityError: NOT NULL constraint failed:
+playlist_entries.position` because it appends through the `songs` relationship and
+never sets the required `position`/`added_by` columns. This isn't one of the five
+listed issues; I've documented it as a follow-up rather than expanding scope.
+
+**Verification was always mine to sign off on.** Every fix was checked by running
+`pytest tests/` (10/13 → 13/13) and re-running the reproduction script to confirm
+the specific symptom was gone and both sides of each boundary behaved — I treated
+the AI's "this should work" as a hypothesis, not a result, until the suite was
+green.
 
 ---
 
