@@ -68,6 +68,29 @@ green.
 
 ---
 
+## Commit History
+
+`git log --oneline` on the `bugfix/mixtape` branch — one commit per bug fix, each
+with a `fix:` prefix, plus the documentation commits:
+
+![git log --oneline on bugfix/mixtape](commit-history.png)
+
+```
+1ecb5d9 docs: add AI usage section and finalize submission review
+2aee398 docs: restructure RCA entries to the five-field format
+cfc2312 docs: add codebase map and root cause analysis for fixed bugs
+790134b fix: notify song sharer when their song is rated
+2fcc67f fix: stop dropping the last song in get_playlist_songs
+508e163 fix: remove bogus Sunday condition from streak increment logic
+2dfdeaa Add .gitignore file and update README with setup instructions
+7b64551 initial commit
+```
+
+The three `fix:` commits each address one bug and touch exactly one service file:
+`streak_service.py` (#1), `playlist_service.py` (#5), `notification_service.py` (#4).
+
+---
+
 ## Layer overview
 
 The app is a clean three-layer stack, plus the data model:
